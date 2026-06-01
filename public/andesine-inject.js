@@ -25,14 +25,10 @@
     targetOrigin:    '{{TARGET_ORIGIN}}',
     /** WebSocket relay endpoint on the Andesine server */
     wsRelayBase:     '{{ANDESINE_WS_RELAY}}',   // e.g. wss://andesine.example.com/ws-relay
-    /** TURN/STUN configuration for WebRTC relay */
+    /** STUN servers for best-effort WebRTC connectivity (no TURN relay configured) */
     iceServers: [
-      { urls: 'stun:{{ANDESINE_STUN_HOST}}:3478' },
-      {
-        urls:       'turn:{{ANDESINE_TURN_HOST}}:3478',
-        username:   '{{TURN_USERNAME}}',
-        credential: '{{TURN_CREDENTIAL}}',
-      },
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
     ],
     /** Prefix appended to every proxied resource path */
     resourcePrefix:  '/proxy-asset?url=',
@@ -331,19 +327,17 @@
 
   if (_NativeRTC) {
     /**
-     * Rewrites an SDP blob:
-     *  - Removes 'host' and 'srflx' candidate lines (local IP exposure)
-     *  - Retains only 'relay' candidates (TURN-sourced)
-     *  - Injects our TURN server into the SDP if needed
+     * Rewrites an SDP blob.
+     * Without a TURN relay we cannot force 'relay'-only transport, so we only
+     * strip 'host' candidates (local LAN IPs) while allowing 'srflx' (public
+     * IP via STUN).  Add a TURN server to enforce full relay-only mode.
      */
     function rewriteSDP(sdp) {
       if (!sdp) return sdp;
       const lines = sdp.split('\n').filter(line => {
-        // Strip host & server-reflexive candidates — only relay survives
         if (line.startsWith('a=candidate:')) {
-          const parts = line.split(' ');
-          const type  = parts[7];               // candidate type field
-          if (type === 'host' || type === 'srflx') return false;
+          const type = line.split(' ')[7];
+          if (type === 'host') return false;   // strip local-IP candidates
         }
         return true;
       });
@@ -353,10 +347,11 @@
     function buildIceConfig(userConfig) {
       const base = userConfig || {};
       return Object.assign({}, base, {
-        iceServers:          CONFIG.iceServers,
-        iceTransportPolicy:  'relay',          // ONLY relay — no host/srflx
-        bundlePolicy:        'max-bundle',
-        rtcpMuxPolicy:       'require',
+        iceServers:    CONFIG.iceServers,
+        // iceTransportPolicy is left as default ('all') — set to 'relay' only
+        // once a TURN server is configured, otherwise WebRTC will stall entirely.
+        bundlePolicy:  'max-bundle',
+        rtcpMuxPolicy: 'require',
       });
     }
 
@@ -390,13 +385,12 @@
         return _pc.setRemoteDescription(desc);
       };
 
-      // Intercept addIceCandidate — filter out host/srflx
+      // Intercept addIceCandidate — filter out host (local IP) candidates
       this.addIceCandidate = function(candidate) {
         if (candidate && candidate.candidate) {
-          const parts = candidate.candidate.split(' ');
-          const type  = parts[7];
-          if (type === 'host' || type === 'srflx') {
-            return Promise.resolve();   // silently discard non-relay candidates
+          const type = candidate.candidate.split(' ')[7];
+          if (type === 'host') {
+            return Promise.resolve();   // discard local-IP candidates silently
           }
         }
         return _pc.addIceCandidate(candidate);
@@ -635,8 +629,8 @@
   } catch {}
 
 
-  /* ─────────────────────────────────────────────
-   * 13. MUTATION OBSERVER
+
+
    *     Watches for dynamically inserted nodes and
    *     rewrites any src/href attributes added after
    *     initial parse (e.g. lazy-loaded images, ads).

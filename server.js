@@ -30,14 +30,10 @@ const WebSocket    = require('ws');          // npm i ws — only external dep
  * CONFIG
  * ───────────────────────────────────────────────── */
 const CONFIG = {
-  PORT:          process.env.PORT          || 8080,
-  HOST:          process.env.HOST          || '0.0.0.0',
-  ORIGIN:        process.env.ANDESINE_ORIGIN || 'http://localhost:8080',
-  WS_RELAY_BASE: process.env.ANDESINE_WS_RELAY || 'ws://localhost:8080/ws-relay',
-  STUN_HOST:     process.env.ANDESINE_STUN || 'stun.andesine.local',
-  TURN_HOST:     process.env.ANDESINE_TURN || 'turn.andesine.local',
-  TURN_USER:     process.env.TURN_USER     || 'andesine',
-  TURN_CRED:     process.env.TURN_CRED     || 'andesine_secret',
+  PORT:          process.env.PORT             || 8000,
+  HOST:          process.env.HOST             || '0.0.0.0',
+  ORIGIN:        process.env.ANDESINE_ORIGIN  || 'https://andesine.koyeb.app',
+  WS_RELAY_BASE: process.env.ANDESINE_WS_RELAY || 'wss://andesine.koyeb.app/ws-relay',
   /** Max body size for rewriting (larger assets are streamed raw) */
   REWRITE_LIMIT: 8 * 1024 * 1024,   // 8 MB
   /** Comma-separated list of blocked target domains */
@@ -56,14 +52,16 @@ function getInjectScript(targetOrigin) {
   if (!_injectTemplate) {
     _injectTemplate = fs.readFileSync(INJECT_PATH, 'utf8');
   }
+  // Normalise relay base to always use wss://
+  const wsRelay = CONFIG.WS_RELAY_BASE
+    .replace(/^ws:\/\//,    'wss://')
+    .replace(/^http:\/\//,  'wss://')
+    .replace(/^https:\/\//, 'wss://');
+
   return _injectTemplate
-    .replace(/\{\{ANDESINE_ORIGIN\}\}/g,    CONFIG.ORIGIN)
-    .replace(/\{\{TARGET_ORIGIN\}\}/g,      targetOrigin)
-    .replace(/\{\{ANDESINE_WS_RELAY\}\}/g,  CONFIG.WS_RELAY_BASE.replace('ws://', 'wss://').replace('http://', 'wss://'))
-    .replace(/\{\{ANDESINE_STUN_HOST\}\}/g, CONFIG.STUN_HOST)
-    .replace(/\{\{ANDESINE_TURN_HOST\}\}/g, CONFIG.TURN_HOST)
-    .replace(/\{\{TURN_USERNAME\}\}/g,      CONFIG.TURN_USER)
-    .replace(/\{\{TURN_CREDENTIAL\}\}/g,    CONFIG.TURN_CRED);
+    .replace(/\{\{ANDESINE_ORIGIN\}\}/g,   CONFIG.ORIGIN)
+    .replace(/\{\{TARGET_ORIGIN\}\}/g,     targetOrigin)
+    .replace(/\{\{ANDESINE_WS_RELAY\}\}/g, wsRelay);
 }
 
 
@@ -655,14 +653,17 @@ const httpServer = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // Preflight
+  // Universal CORS — every route is cross-origin fetchable from any page.
+  // Set via setHeader() so these are inherited by every writeHead() call below.
+  res.setHeader('Access-Control-Allow-Origin',   '*');
+  res.setHeader('Access-Control-Allow-Methods',  'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
+  res.setHeader('Access-Control-Allow-Headers',  '*');
+  res.setHeader('Access-Control-Expose-Headers', '*');
+  res.setHeader('Access-Control-Max-Age',        '86400');
+
+  // Preflight — headers already set above, just close the request
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin':  '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
-      'Access-Control-Max-Age':       '86400',
-    });
+    res.writeHead(204);
     res.end(); return;
   }
 
@@ -779,7 +780,7 @@ httpServer.listen(CONFIG.PORT, CONFIG.HOST, () => {
   ║   🌋  ANDESINE PROXY NETWORK  v2.0    ║
   ║       Volcanic. Fast. Relentless.     ║
   ╠═══════════════════════════════════════╣
-  ║   Dashboard  → http://localhost:${CONFIG.PORT}  ║
+  ║   Dashboard  → http://localhost:${CONFIG.PORT} ║
   ║   Proxy API  → /proxy?url=<url>       ║
   ║   Assets     → /proxy-asset?url=<url> ║
   ║   WS Relay   → /ws-relay?target=<ws>  ║

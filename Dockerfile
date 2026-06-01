@@ -15,7 +15,7 @@ COPY server.js ./
 COPY public/ ./public/
 
 # Inform Docker that the container listens on this port at runtime
-EXPOSE 8080
+EXPOSE 8000
 
 # Run the Node.js server directly (Ensures OS signals like SIGTERM are caught properly)
 CMD ["node", "server.js"]
