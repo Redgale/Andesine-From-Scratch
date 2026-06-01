@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andesine — Volcanic Proxy Network</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ── BACKGROUND LAYERS ── -->
+  <div class="bg-grid"></div>
+  <div class="bg-orb bg-orb--1"></div>
+  <div class="bg-orb bg-orb--2"></div>
+  <div class="bg-orb bg-orb--3"></div>
+  <canvas id="particle-canvas"></canvas>
+
+  <!-- ── TOPBAR ── -->
+  <header class="topbar glass">
+    <div class="topbar__brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
+        <polygon points="16,2 30,28 2,28" fill="none" stroke="url(#brandGrad)" stroke-width="2"/>
+        <polygon points="16,9 24,26 8,26" fill="url(#brandGradFill)" opacity="0.4"/>
+        <defs>
+          <linearGradient id="brandGrad" x1="2" y1="28" x2="30" y2="2" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ff6b2b"/>
+            <stop offset="100%" stop-color="#ff2d78"/>
+          </linearGradient>
+          <linearGradient id="brandGradFill" x1="2" y1="28" x2="30" y2="2" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ff6b2b"/>
+            <stop offset="100%" stop-color="#ff2d78"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <span class="brand-name">ANDESINE</span>
+      <span class="brand-tag">PROXY NETWORK</span>
+    </div>
+    <nav class="topbar__nav">
+      <button class="nav-btn nav-btn--active" data-panel="dashboard">Dashboard</button>
+      <button class="nav-btn" data-panel="nodes">Nodes</button>
+      <button class="nav-btn" data-panel="history">History</button>
+    </nav>
+    <div class="topbar__status">
+      <span class="status-dot status-dot--pulse"></span>
+      <span class="status-label" id="networkStatus">NETWORK ONLINE</span>
+    </div>
+  </header>
+
+  <!-- ── MAIN PANELS ── -->
+  <main class="main-layout">
+
+    <!-- PANEL: DASHBOARD -->
+    <section class="panel panel--dashboard active" id="panel-dashboard">
+
+      <!-- Hero URL Launchpad -->
+      <div class="launchpad">
+        <p class="launchpad__eyebrow">Route through Andesine</p>
+        <h1 class="launchpad__headline">Where do you<br/><em>want to go?</em></h1>
+        <div class="url-bar-wrap" id="urlBarWrap">
+          <div class="url-bar glass">
+            <span class="url-bar__icon">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M15 15l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </span>
+            <input
+              type="text"
+              id="urlInput"
+              class="url-bar__input"
+              placeholder="Enter a URL or search…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button class="url-bar__btn" id="launchBtn">
+              <span class="btn-label">LAUNCH</span>
+              <svg class="btn-arrow" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <ul class="autocomplete-list glass" id="autocompleteList"></ul>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="stats-row">
+        <div class="stat-card glass" id="statLatency">
+          <div class="stat-card__header">
+            <span class="stat-card__label">LATENCY</span>
+            <span class="stat-card__icon">⚡</span>
+          </div>
+          <div class="stat-card__value"><span id="latencyVal">--</span><sub>ms</sub></div>
+          <canvas class="spark-canvas" id="sparkLatency" width="120" height="32"></canvas>
+        </div>
+        <div class="stat-card glass" id="statBandwidth">
+          <div class="stat-card__header">
+            <span class="stat-card__label">THROUGHPUT</span>
+            <span class="stat-card__icon">📡</span>
+          </div>
+          <div class="stat-card__value"><span id="bandwidthVal">--</span><sub>Mb/s</sub></div>
+          <canvas class="spark-canvas" id="sparkBandwidth" width="120" height="32"></canvas>
+        </div>
+        <div class="stat-card glass" id="statStability">
+          <div class="stat-card__header">
+            <span class="stat-card__label">STABILITY</span>
+            <span class="stat-card__icon">🔗</span>
+          </div>
+          <div class="stat-card__value"><span id="stabilityVal">--</span><sub>%</sub></div>
+          <canvas class="spark-canvas" id="sparkStability" width="120" height="32"></canvas>
+        </div>
+        <div class="stat-card glass" id="statSessions">
+          <div class="stat-card__header">
+            <span class="stat-card__label">ACTIVE SESSIONS</span>
+            <span class="stat-card__icon">🌐</span>
+          </div>
+          <div class="stat-card__value"><span id="sessionsVal">0</span><sub>live</sub></div>
+          <canvas class="spark-canvas" id="sparkSessions" width="120" height="32"></canvas>
+        </div>
+      </div>
+
+      <!-- Main content grid: Chart + Quick Sites -->
+      <div class="content-grid">
+        <!-- Bandwidth Chart -->
+        <div class="chart-card glass">
+          <div class="chart-card__header">
+            <h3>Network Activity</h3>
+            <div class="chart-legend">
+              <span class="legend-item legend-item--tx">TX</span>
+              <span class="legend-item legend-item--rx">RX</span>
+            </div>
+          </div>
+          <canvas id="mainChart" width="600" height="180"></canvas>
+        </div>
+
+        <!-- Quick Launch Sites -->
+        <div class="quicksites-card glass">
+          <h3>Quick Launch</h3>
+          <ul class="quicksites-list" id="quickSitesList">
+            <li class="qs-item" data-url="https://youtube.com">
+              <span class="qs-favicon">▶</span>
+              <span class="qs-name">YouTube</span>
+              <span class="qs-host">youtube.com</span>
+            </li>
+            <li class="qs-item" data-url="https://reddit.com">
+              <span class="qs-favicon">🗨</span>
+              <span class="qs-name">Reddit</span>
+              <span class="qs-host">reddit.com</span>
+            </li>
+            <li class="qs-item" data-url="https://twitch.tv">
+              <span class="qs-favicon">🎮</span>
+              <span class="qs-name">Twitch</span>
+              <span class="qs-host">twitch.tv</span>
+            </li>
+            <li class="qs-item" data-url="https://discord.com/app">
+              <span class="qs-favicon">💬</span>
+              <span class="qs-name">Discord</span>
+              <span class="qs-host">discord.com</span>
+            </li>
+            <li class="qs-item" data-url="https://github.com">
+              <span class="qs-favicon">⚙</span>
+              <span class="qs-name">GitHub</span>
+              <span class="qs-host">github.com</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- PANEL: NODES -->
+    <section class="panel" id="panel-nodes">
+      <div class="panel-header">
+        <h2>Proxy Nodes</h2>
+        <p>Edge nodes routing your traffic at volcanic speed.</p>
+      </div>
+      <div class="nodes-grid" id="nodesGrid">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <!-- PANEL: HISTORY -->
+    <section class="panel" id="panel-history">
+      <div class="panel-header">
+        <h2>Session History</h2>
+        <p>Recent proxied sessions on this device.</p>
+      </div>
+      <div class="history-table-wrap glass">
+        <table class="history-table" id="historyTable">
+          <thead>
+            <tr><th>Host</th><th>Started</th><th>Duration</th><th>Transferred</th><th>Status</th></tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr class="empty-row"><td colspan="5">No sessions recorded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── PROXY FRAME OVERLAY ── -->
+  <div class="proxy-overlay" id="proxyOverlay">
+    <div class="proxy-hud glass" id="proxyHud">
+      <div class="hud-brand">
+        <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
+          <polygon points="9,1 17,16 1,16" fill="none" stroke="url(#hudGrad)" stroke-width="1.5"/>
+          <defs>
+            <linearGradient id="hudGrad" x1="1" y1="16" x2="17" y2="1" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#ff6b2b"/>
+              <stop offset="100%" stop-color="#ff2d78"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span>ANDESINE</span>
+      </div>
+      <div class="hud-divider"></div>
+      <div class="hud-stat">
+        <span class="hud-stat__label">PING</span>
+        <span class="hud-stat__val" id="hudPing">—</span>
+      </div>
+      <div class="hud-stat">
+        <span class="hud-stat__label">BW</span>
+        <span class="hud-stat__val" id="hudBw">—</span>
+      </div>
+      <div class="hud-divider"></div>
+      <button class="hud-btn" id="hudFullscreen" title="Full-screen">⛶</button>
+      <button class="hud-btn" id="hudHome" title="Back to dashboard">⌂</button>
+    </div>
+    <iframe id="proxyFrame" class="proxy-frame" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation"></iframe>
+    <div class="launch-transition" id="launchTransition">
+      <div class="lt-ring lt-ring--1"></div>
+      <div class="lt-ring lt-ring--2"></div>
+      <div class="lt-ring lt-ring--3"></div>
+      <p class="lt-label">ROUTING THROUGH ANDESINE</p>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
