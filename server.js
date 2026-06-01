@@ -25,6 +25,7 @@ const path         = require('path');
 const { URL }      = require('url');
 const { EventEmitter } = require('events');
 const WebSocket    = require('ws');          // npm i ws — only external dep
+const zlib         = require('zlib');
 
 /* ─────────────────────────────────────────────────
  * CONFIG
@@ -47,11 +48,11 @@ const INJECT_PATH  = path.join(PUBLIC_DIR, 'andesine-inject.js');
 /* ─────────────────────────────────────────────────
  * INJECTION SCRIPT — loaded once, template-filled per request
  * ───────────────────────────────────────────────── */
-let _injectTemplate = null;
+// Load inject template once at startup — crash immediately if the file is missing
+// rather than throwing inside a live request handler later.
+const _injectTemplate = fs.readFileSync(INJECT_PATH, 'utf8');
+
 function getInjectScript(targetOrigin) {
-  if (!_injectTemplate) {
-    _injectTemplate = fs.readFileSync(INJECT_PATH, 'utf8');
-  }
   // Normalise relay base to always use wss://
   const wsRelay = CONFIG.WS_RELAY_BASE
     .replace(/^ws:\/\//,    'wss://')
@@ -527,14 +528,17 @@ async function handleProxy(req, res, isAsset = false) {
   const tStart = Date.now();
   sessionMetrics.totalRequests++;
 
-  // Build request body for POST/PUT/PATCH
+  // Build request body for POST/PUT/PATCH.
+  // Resolve with an empty buffer on socket error (e.g. client disconnected
+  // or load-balancer closed an idle keep-alive) — never reject, so we don't
+  // produce an unhandled rejection that crashes Node.js 18.
   let body = null;
   if (['POST','PUT','PATCH'].includes(req.method)) {
-    body = await new Promise((resolve, reject) => {
+    body = await new Promise((resolve) => {
       const chunks = [];
       req.on('data', c => chunks.push(c));
       req.on('end',  () => resolve(Buffer.concat(chunks)));
-      req.on('error', reject);
+      req.on('error', () => resolve(Buffer.alloc(0)));
     });
   }
 
@@ -574,7 +578,6 @@ async function handleProxy(req, res, isAsset = false) {
   const encoding = upstream.headers['content-encoding'];
   try {
     if (encoding === 'gzip' || encoding === 'deflate' || encoding === 'br') {
-      const zlib = require('zlib');
       const decompress = encoding === 'br'
         ? zlib.brotliDecompressSync
         : encoding === 'gzip'
@@ -650,6 +653,7 @@ setInterval(() => {
  * HTTP REQUEST ROUTER
  * ───────────────────────────────────────────────── */
 const httpServer = http.createServer(async (req, res) => {
+  try {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
@@ -694,6 +698,16 @@ const httpServer = http.createServer(async (req, res) => {
 
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Andesine: Not Found');
+
+  } catch (err) {
+    console.error('[Andesine] Unhandled request error:', err.message || err);
+    try {
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Internal proxy error');
+      }
+    } catch (_) { /* response already gone */ }
+  }
 });
 
 
@@ -768,6 +782,20 @@ wss.on('connection', (clientWs, req) => {
   targetWs.on('open', () => {
     clientWs.send(JSON.stringify({ type: '__andesine_ws_open__', target }));
   });
+});
+
+
+/* ─────────────────────────────────────────────────
+ * PROCESS-LEVEL SAFETY NET
+ * Prevents Node.js 18 from terminating the process on
+ * stray unhandled rejections (e.g. cancelled upstream
+ * requests, load-balancer keep-alive resets, etc.).
+ * ───────────────────────────────────────────────── */
+process.on('unhandledRejection', (reason) => {
+  console.error('[Andesine] Unhandled rejection (non-fatal):', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[Andesine] Uncaught exception (non-fatal):', err.message);
 });
 
 
